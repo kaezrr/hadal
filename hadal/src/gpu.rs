@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use log::info;
 use wgpu::Device;
 use wgpu::Instance;
@@ -8,8 +6,8 @@ use wgpu::Queue;
 use wgpu::RequestAdapterOptionsBase;
 use wgpu::Surface;
 use wgpu::SurfaceConfiguration;
+use wgpu::SurfaceTarget;
 use wgpu::wgt::DeviceDescriptor;
-use winit::window::Window;
 
 #[derive(Debug)]
 pub struct GpuContext<'a> {
@@ -20,8 +18,12 @@ pub struct GpuContext<'a> {
     pub is_surface_configured: bool,
 }
 
-impl GpuContext<'_> {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+impl<'a> GpuContext<'a> {
+    pub async fn new(
+        target: impl Into<SurfaceTarget<'a>>,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<Self> {
         let instance = Instance::new(InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             flags: wgpu::InstanceFlags::default(),
@@ -30,7 +32,7 @@ impl GpuContext<'_> {
             display: None,
         });
 
-        let surface = instance.create_surface(window.clone())?;
+        let surface = instance.create_surface(target)?;
 
         let adapter = instance
             .request_adapter(&RequestAdapterOptionsBase {
@@ -64,14 +66,12 @@ impl GpuContext<'_> {
                 .copied()
                 .unwrap_or(capabilites.formats[0]);
 
-            let size = window.inner_size();
-
             SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: surface_format,
                 color_space: wgpu::SurfaceColorSpace::Auto,
-                width: size.width,
-                height: size.height,
+                width,
+                height,
                 present_mode: capabilites.present_modes[0],
                 desired_maximum_frame_latency: 2,
                 alpha_mode: capabilites.alpha_modes[0],

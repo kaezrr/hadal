@@ -901,21 +901,23 @@ name = "hadal"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitflags 2.13.1",
  "bytemuck",
  "glam",
  "image",
  "log",
- "tobj",
  "wgpu",
- "winit",
 ]
 
 [[package]]
 name = "hadal-loaders"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bytemuck",
+ "glam",
  "hadal",
+ "tobj",
+ "wgpu",
 ]
 
 [[package]]

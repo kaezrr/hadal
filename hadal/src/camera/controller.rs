@@ -2,8 +2,6 @@ use core::f32;
 use core::time::Duration;
 
 use glam::Vec3;
-use winit::event::MouseScrollDelta;
-use winit::keyboard::KeyCode;
 
 #[derive(Debug)]
 pub struct CameraController {
@@ -43,30 +41,13 @@ impl CameraController {
         }
     }
 
-    pub fn process_keyboard(&mut self, key: KeyCode, is_pressed: bool) {
-        let amount = if is_pressed { 1.0 } else { 0.0 };
-
-        match key {
-            KeyCode::KeyW => self.amount_forward = amount,
-            KeyCode::KeyA => self.amount_left = amount,
-            KeyCode::KeyS => self.amount_backward = amount,
-            KeyCode::KeyD => self.amount_right = amount,
-            KeyCode::ControlLeft => self.amount_up = amount,
-            KeyCode::ShiftLeft => self.amount_down = amount,
-            x => log::debug!("Ignoring keypress: {x:?}"),
-        }
-    }
-
     pub fn process_mouse_delta(&mut self, dx: f64, dy: f64) {
         self.rotate_horizontal = dx as f32;
         self.rotate_vertical = dy as f32;
     }
 
-    pub fn process_mouse_scroll(&mut self, delta: &MouseScrollDelta) {
-        self.scroll = match delta {
-            MouseScrollDelta::LineDelta(_, scroll) => scroll * 300.0,
-            MouseScrollDelta::PixelDelta(physical_position) => physical_position.y as f32,
-        }
+    pub fn process_mouse_scroll(&mut self, delta: f32) {
+        self.scroll = delta * 300.0;
     }
 
     pub fn update(&mut self, camera: &mut super::Camera, dt: Duration) {

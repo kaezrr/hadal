@@ -7,14 +7,12 @@ mod hdr;
 mod instance;
 mod light;
 mod model;
-mod parser;
 mod pipeline;
 mod texture;
 
 use core::time::Duration;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use glam::Quat;
 use glam::Vec4Swizzles;
@@ -28,10 +26,6 @@ use wgpu::RenderPipeline;
 use wgpu::ShaderModuleDescriptor;
 use wgpu::wgt::CommandEncoderDescriptor;
 use wgpu::wgt::TextureViewDescriptor;
-use winit::event::MouseScrollDelta;
-use winit::keyboard::KeyCode;
-use winit::window::CursorGrabMode;
-use winit::window::Window;
 
 use crate::camera::Camera;
 use crate::camera::CameraBundle;
@@ -45,18 +39,17 @@ use crate::light::DrawLight;
 use crate::light::LightBundle;
 use crate::light::LightUniform;
 use crate::model::DrawModel;
-use crate::model::GpuVertex;
-use crate::model::Material;
-use crate::model::Model;
-use crate::model::ModelVertex;
-use crate::model::PropertiesUniform;
-use crate::parser::load_model_from_obj;
-use crate::texture::Texture;
-use crate::texture::TextureType;
+pub use crate::model::GpuVertex;
+pub use crate::model::Material;
+pub use crate::model::Mesh;
+pub use crate::model::Model;
+pub use crate::model::ModelVertex;
+pub use crate::model::PropertiesUniform;
+pub use crate::texture::Texture;
+pub use crate::texture::TextureType;
 
 #[derive(Debug)]
-pub struct State<'a> {
-    window: Arc<Window>,
+pub struct HadalRenderer<'a> {
     gpu_context: GpuContext<'a>,
 
     depth_texture: Texture,
@@ -73,14 +66,14 @@ pub struct State<'a> {
 
     showcase_model: Model,
     light_debug_model: Model,
-
-    cursor_grabbed: bool,
 }
 
-impl State<'_> {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let gpu_context = GpuContext::new(window.clone()).await?;
-
+impl<'a> HadalRenderer<'a> {
+    pub fn new(
+        gpu_context: GpuContext<'a>,
+        showcase_model: Model,
+        light_debug_model: Model,
+    ) -> anyhow::Result<Self> {
         let camera = create_camera_bundle(&gpu_context.device, &gpu_context.config);
 
         let light = create_light_bundle(&gpu_context.device);
@@ -104,20 +97,6 @@ impl State<'_> {
             None,
             None,
         );
-
-        let showcase_model = load_model_from_obj(
-            &gpu_context.device,
-            &gpu_context.queue,
-            &material_bind_group_layout,
-            "models/skull/Skull.obj",
-        )?;
-
-        let light_debug_model = load_model_from_obj(
-            &gpu_context.device,
-            &gpu_context.queue,
-            &material_bind_group_layout,
-            "models/sphere/sphere.obj",
-        )?;
 
         let instance_bundle = InstanceBundle::single(&gpu_context.device);
 
@@ -151,7 +130,6 @@ impl State<'_> {
         )?;
 
         Ok(Self {
-            window,
             gpu_context,
             depth_texture,
             instance_bundle,
@@ -164,13 +142,10 @@ impl State<'_> {
             light_debug_pipeline,
             showcase_model,
             light_debug_model,
-            cursor_grabbed: false,
         })
     }
 
     pub fn render(&self) -> anyhow::Result<()> {
-        self.window.request_redraw();
-
         if !self.gpu_context.is_surface_configured {
             warn!("Trying to render unconfigured surface");
             return Ok(());
@@ -272,24 +247,6 @@ impl State<'_> {
         self.instance_bundle.update(&self.gpu_context.queue);
     }
 
-    pub fn process_keyboard(&mut self, key: KeyCode, is_pressed: bool) {
-        self.camera.controller.process_keyboard(key, is_pressed);
-    }
-
-    pub fn process_mouse_delta(&mut self, dx: f64, dy: f64) {
-        if !self.cursor_grabbed {
-            return;
-        }
-        self.camera.controller.process_mouse_delta(dx, dy);
-    }
-
-    pub fn process_mouse_scroll(&mut self, delta: &MouseScrollDelta) {
-        if !self.cursor_grabbed {
-            return;
-        }
-        self.camera.controller.process_mouse_scroll(delta);
-    }
-
     pub fn resize_surface(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
             return;
@@ -303,20 +260,6 @@ impl State<'_> {
 
         self.depth_texture =
             Texture::create_depth_texture(&self.gpu_context.device, &self.gpu_context.config);
-    }
-
-    pub fn capture_mouse(&mut self) -> anyhow::Result<()> {
-        self.window.set_cursor_grab(CursorGrabMode::Locked)?;
-        self.window.set_cursor_visible(false);
-        self.cursor_grabbed = true;
-        Ok(())
-    }
-
-    pub fn release_mouse(&mut self) -> anyhow::Result<()> {
-        self.window.set_cursor_grab(CursorGrabMode::None)?;
-        self.window.set_cursor_visible(true);
-        self.cursor_grabbed = false;
-        Ok(())
     }
 }
 

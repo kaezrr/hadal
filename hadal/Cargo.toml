@@ -5,14 +5,11 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-bitflags = "2.13.1"
 bytemuck = "1.25.2"
 glam = { version ="0.33.6", features=["bytemuck"] }
 image = "0.25.10"
 log = "0.4.34"
-tobj = "4.0.5"
 wgpu = "30.0.1"
-winit = "0.30.13"
 
 [lints]
 workspace = true

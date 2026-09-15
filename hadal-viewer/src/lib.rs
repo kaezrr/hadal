@@ -1,10 +1,13 @@
+mod state;
+
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use hadal::State;
 use log::error;
 use log::info;
 use log::warn;
+use state::State;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::DeviceEvent;
@@ -21,7 +24,7 @@ use winit::window::WindowId;
 
 #[derive(Debug)]
 pub struct App {
-    state: Option<State<'static>>,
+    state: Option<State>,
     last_frame_time: Instant,
 }
 
@@ -142,4 +145,20 @@ impl ApplicationHandler for App {
             state.process_mouse_delta(delta.0, delta.1);
         }
     }
+}
+
+pub(crate) fn load_asset_bytes(file_name: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
+    let asset_path = create_asset_path(file_name);
+    std::fs::read(asset_path)
+}
+
+pub(crate) fn load_asset_string(file_name: impl AsRef<Path>) -> std::io::Result<String> {
+    let asset_path = create_asset_path(file_name);
+    std::fs::read_to_string(asset_path)
+}
+
+pub(crate) fn create_asset_path(file_name: impl AsRef<Path>) -> std::path::PathBuf {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+        .join("assets")
+        .join(file_name)
 }
