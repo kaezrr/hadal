@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use hadal::GpuContext;
+use hadal::HadalRenderer;
+use winit::dpi::PhysicalSize;
 use winit::event::MouseScrollDelta;
 use winit::keyboard::KeyCode;
 use winit::window::CursorGrabMode;
@@ -8,20 +11,32 @@ use winit::window::Window;
 #[derive(Debug)]
 pub struct State {
     window: Arc<Window>,
+    renderer: HadalRenderer<'static>,
     cursor_grabbed: bool,
 }
 
 impl State {
-    pub async fn new(_window: Arc<Window>) -> anyhow::Result<Self> {
-        todo!()
+    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+        let gpu_context = {
+            let PhysicalSize { width, height } = window.inner_size();
+            GpuContext::new(window.clone(), width, height).await?
+        };
+
+        let renderer = HadalRenderer::new(gpu_context)?;
+
+        Ok(Self {
+            window,
+            renderer,
+            cursor_grabbed: false,
+        })
     }
 
     pub fn render(&self) -> anyhow::Result<()> {
         todo!()
     }
 
-    pub fn update(&mut self, _dt: std::time::Duration) {
-        todo!()
+    pub fn update(&mut self, dt: core::time::Duration) {
+        self.renderer.update(dt);
     }
 
     pub fn process_keyboard(&mut self, _key: KeyCode, _is_pressed: bool) {
@@ -46,7 +61,7 @@ impl State {
         if width == 0 || height == 0 {
             return;
         }
-        todo!()
+        self.renderer.resize_surface(width, height);
     }
 
     pub fn capture_mouse(&mut self) -> anyhow::Result<()> {

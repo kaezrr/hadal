@@ -1,26 +1,17 @@
-#![feature(file_buffered)]
-
 use std::fs::File;
 use std::path::Path;
 
 use glam::Vec2;
 use glam::Vec3;
 use glam::Vec4;
-use hadal::Material;
-use hadal::Mesh;
-use hadal::Model;
-use hadal::ModelVertex;
-use hadal::PropertiesUniform;
-use hadal::Texture;
-use wgpu::BindGroupLayout;
-use wgpu::util::DeviceExt;
 
-pub fn load_model_from_obj(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    layout: &BindGroupLayout,
-    file_path: impl AsRef<Path>,
-) -> anyhow::Result<Model> {
+use super::UnloadedMaterial;
+use super::UnloadedMesh;
+use super::UnloadedModel;
+use crate::model::ModelVertex;
+use crate::model::PropertiesUniform;
+
+pub fn load_model_from_obj(file_path: impl AsRef<Path>) -> anyhow::Result<UnloadedModel> {
     let obj_parent = file_path
         .as_ref()
         .parent()
@@ -39,7 +30,7 @@ pub fn load_model_from_obj(
         (r.0, r.1?)
     };
 
-    let materials = create_model_materials(device, queue, object_materials, layout, |texture| {
+    let materials = create_model_materials(object_materials, |texture| {
         let texture_path = obj_parent.join(texture);
         std::fs::read(texture_path)
     })?;
@@ -91,28 +82,15 @@ pub fn load_model_from_obj(
 
         calculate_tangents_and_bitangents(&object.mesh.indices, &mut vertices);
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Vertex Buffer: {}", object.name)),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Index Buffer: {}", object.name)),
-            contents: bytemuck::cast_slice(&object.mesh.indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        meshes.push(Mesh {
+        meshes.push(UnloadedMesh {
             name: object.name,
-            vertex_buffer,
-            index_buffer,
-            num_indices: object.mesh.indices.len() as u32,
+            vertices,
+            indices: object.mesh.indices,
             material_id: object.mesh.material_id,
         });
     }
 
-    Ok(Model { meshes, materials })
+    Ok(UnloadedModel { meshes, materials })
 }
 
 fn calculate_tangents_and_bitangents(indices: &[u32], vertices: &mut [ModelVertex]) {
@@ -162,41 +140,24 @@ fn calculate_tangents_and_bitangents(indices: &[u32], vertices: &mut [ModelVerte
 }
 
 fn create_model_materials<F>(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
     object_materials: Vec<tobj::Material>,
-    layout: &BindGroupLayout,
     read_texture: F,
-) -> anyhow::Result<Vec<Material>>
+) -> anyhow::Result<Vec<UnloadedMaterial>>
 where
-    F: Fn(&str) -> std::io::Result<Vec<u8>>,
+    F: Fn(&str) -> std::io::Result<Vec<u8>> + Copy,
 {
     let mut materials = Vec::with_capacity(object_materials.len());
     for mat in object_materials {
         let diffuse_texture = mat
             .diffuse_texture
-            .map(|ref tex| -> anyhow::Result<_> {
-                Texture::from_bytes(
-                    device,
-                    queue,
-                    &read_texture(tex)?,
-                    wgpu::TextureFormat::Rgba8UnormSrgb,
-                    Some(&format!("Diffuse Texture: {}", mat.name)),
-                )
-            })
+            .as_deref()
+            .map(read_texture)
             .transpose()?;
 
         let normal_texture = mat
             .normal_texture
-            .map(|ref tex| -> anyhow::Result<_> {
-                Texture::from_bytes(
-                    device,
-                    queue,
-                    &read_texture(tex)?,
-                    wgpu::TextureFormat::Rgba8Unorm,
-                    Some(&format!("Normal Texture: {}", mat.name)),
-                )
-            })
+            .as_deref()
+            .map(read_texture)
             .transpose()?;
 
         let properties = PropertiesUniform {
@@ -205,15 +166,12 @@ where
                 .map_or(Vec4::ONE, |x| Vec3::from_array(x).to_homogeneous()),
         };
 
-        materials.push(Material::new(
-            device,
-            queue,
-            mat.name,
-            properties,
-            layout,
+        materials.push(UnloadedMaterial {
+            name: mat.name,
             diffuse_texture,
             normal_texture,
-        ));
+            properties,
+        });
     }
 
     Ok(materials)

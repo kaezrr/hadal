@@ -6,6 +6,7 @@ mod gpu;
 mod hdr;
 mod instance;
 mod light;
+mod loaders;
 mod model;
 mod pipeline;
 mod texture;
@@ -31,13 +32,14 @@ use crate::camera::Camera;
 use crate::camera::CameraBundle;
 use crate::camera::Projection;
 use crate::environment::SkyBoxPipeline;
-use crate::gpu::GpuContext;
+pub use crate::gpu::GpuContext;
 use crate::hdr::HdrPipeline;
 use crate::instance::InstanceBundle;
 use crate::instance::InstanceRaw;
 use crate::light::DrawLight;
 use crate::light::LightBundle;
 use crate::light::LightUniform;
+use crate::loaders::load_model_from_obj;
 use crate::model::DrawModel;
 pub use crate::model::GpuVertex;
 pub use crate::model::Material;
@@ -69,11 +71,7 @@ pub struct HadalRenderer<'a> {
 }
 
 impl<'a> HadalRenderer<'a> {
-    pub fn new(
-        gpu_context: GpuContext<'a>,
-        showcase_model: Model,
-        light_debug_model: Model,
-    ) -> anyhow::Result<Self> {
+    pub fn new(gpu_context: GpuContext<'a>) -> anyhow::Result<Self> {
         let camera = create_camera_bundle(&gpu_context.device, &gpu_context.config);
 
         let light = create_light_bundle(&gpu_context.device);
@@ -128,6 +126,20 @@ impl<'a> HadalRenderer<'a> {
                 Some(&light.bind_group_layout),
             ],
         )?;
+
+        let showcase_model = load_model_from_obj(create_asset_path("models/skull/Skull.obj"))?
+            .initialize(
+                &gpu_context.device,
+                &gpu_context.queue,
+                &material_bind_group_layout,
+            )?;
+
+        let light_debug_model = load_model_from_obj(create_asset_path("models/sphere/sphere.obj"))?
+            .initialize(
+                &gpu_context.device,
+                &gpu_context.queue,
+                &material_bind_group_layout,
+            )?;
 
         Ok(Self {
             gpu_context,

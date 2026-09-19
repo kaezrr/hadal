@@ -4,10 +4,10 @@ use core::ops::Range;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use glam::Vec4;
-pub use vertex::GpuVertex;
-pub use vertex::ModelVertex;
 use wgpu::util::DeviceExt;
 
+pub use crate::model::vertex::GpuVertex;
+pub use crate::model::vertex::ModelVertex;
 use crate::texture;
 
 #[expect(unused, reason = "Only using draw model instanced for now")]
@@ -92,7 +92,6 @@ pub struct Model {
 
 #[derive(Debug)]
 pub struct Material {
-    #[expect(unused, reason = "Material name is for debug purposes")]
     pub name: String,
     pub bind_group: wgpu::BindGroup,
 
@@ -105,6 +104,7 @@ pub struct Material {
 impl Material {
     /// First texture is diffuse texture, second texture is normal texture
     /// If any are absent a default one will be created instead
+    #[must_use]
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -170,7 +170,6 @@ impl PropertiesUniform {
 
 #[derive(Debug)]
 pub struct Mesh {
-    #[expect(unused, reason = "Mesh name is for debug purposes")]
     pub name: String,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
