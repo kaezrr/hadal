@@ -23,7 +23,16 @@
 
           # Tools
           shader-slang
+          vulkan-tools
         ];
+
+        env.RUSTFLAGS = "-C link-args=-Wl,-rpath,${
+          pkgs.lib.makeLibraryPath [
+            pkgs.wayland
+            pkgs.vulkan-loader
+            pkgs.libxkbcommon
+          ]
+        }";
       };
     };
 }

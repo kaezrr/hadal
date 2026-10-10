@@ -1,0 +1,85 @@
+use crate::Result;
+use std::num::NonZeroU32;
+use wgpu::wgt::WgpuHasDisplayHandle;
+
+pub struct Engine {
+    gpu: GpuContext,
+}
+
+impl Engine {
+    pub fn new<T>(display: T, width: NonZeroU32, height: NonZeroU32) -> Result<Self>
+    where
+        T: WgpuHasDisplayHandle + Into<wgpu::SurfaceTarget<'static>> + Clone,
+    {
+        Ok(Self {
+            gpu: pollster::block_on(GpuContext::new(display, width, height))?,
+        })
+    }
+}
+
+struct GpuContext {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+}
+
+impl GpuContext {
+    async fn new<T>(display: T, width: NonZeroU32, height: NonZeroU32) -> Result<Self>
+    where
+        T: WgpuHasDisplayHandle + Into<wgpu::SurfaceTarget<'static>> + Clone,
+    {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
+            Box::new(display.clone()),
+        ));
+
+        let surface = instance.create_surface(display)?;
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                ..Default::default()
+            })
+            .await?;
+
+        log::info!("Using GPU device: {}", adapter.get_info().name);
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("device_queue_request"),
+                ..Default::default()
+            })
+            .await?;
+
+        let capabilities = surface.get_capabilities(&adapter);
+
+        let format = capabilities
+            .formats
+            .iter()
+            .copied()
+            .find(wgpu::TextureFormat::is_srgb)
+            .unwrap_or(capabilities.formats[0]);
+
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            color_space: wgpu::SurfaceColorSpace::Auto,
+            width: width.get(),
+            height: height.get(),
+            present_mode: wgpu::PresentMode::AutoVsync,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: capabilities.alpha_modes[0],
+            view_formats: vec![],
+        };
+
+        surface.configure(&device, &config);
+
+        Ok(Self {
+            device,
+            queue,
+            surface,
+            config,
+        })
+    }
+}
