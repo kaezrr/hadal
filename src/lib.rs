@@ -69,7 +69,7 @@ impl ApplicationHandler for Application {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        let Some(ref state) = self.state else {
+        let Some(ref mut state) = self.state else {
             log::warn!("window event before window initialized");
             return;
         };
@@ -85,6 +85,20 @@ impl ApplicationHandler for Application {
                     event_loop.exit();
                     log::info!("Exiting application... goodbye!");
                 }
+            }
+
+            WindowEvent::Resized(new_size) => {
+                let Some(width) = NonZeroU32::new(new_size.width) else {
+                    log::warn!("Cannot set window to zero width!");
+                    return;
+                };
+
+                let Some(height) = NonZeroU32::new(new_size.height) else {
+                    log::warn!("Cannot set window to zero width!");
+                    return;
+                };
+
+                state.engine.resize_surface(width, height);
             }
 
             x => log::debug!("ignoring event: {x:?}"),

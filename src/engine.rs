@@ -32,6 +32,10 @@ impl Engine {
         self.gpu.queue.submit(std::iter::once(command_buffer));
         self.gpu.queue.present(surface_texture);
     }
+
+    pub fn resize_surface(&mut self, width: NonZeroU32, height: NonZeroU32) {
+        self.gpu.configure_surface_with_size(width, height);
+    }
 }
 
 struct GpuContext {
