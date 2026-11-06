@@ -73,13 +73,21 @@ impl GpuContext {
             view_formats: vec![],
         };
 
-        surface.configure(&device, &config);
-
         Ok(Self {
             device,
             queue,
             surface,
             config,
         })
+    }
+
+    fn configure(&self) {
+        self.surface.configure(&self.device, &self.config);
+    }
+
+    fn configure_with_size(&mut self, width: NonZeroU32, height: NonZeroU32) {
+        self.config.width = width.get();
+        self.config.height = height.get();
+        self.configure();
     }
 }
