@@ -1,6 +1,9 @@
 use crate::Result;
 use std::num::NonZeroU32;
-use wgpu::{CurrentSurfaceTexture, wgt::WgpuHasDisplayHandle};
+use wgpu::{
+    CurrentSurfaceTexture, RenderPassColorAttachment, RenderPassDescriptor, TextureViewDescriptor,
+    wgt::WgpuHasDisplayHandle,
+};
 
 pub struct Engine {
     gpu: GpuContext,
@@ -17,20 +20,55 @@ impl Engine {
     }
 
     pub fn render_frame(&self) {
-        let Some(surface_texture) = self.gpu.get_surface_texture() else {
-            log::warn!("Could not obtain surface texture, skipping frame...");
-            return;
+        let (surface_texture, surface_needs_configuration) = match self.gpu.acquire_surface() {
+            CurrentSurface::Optimal(surface_texture) => (surface_texture, false),
+            CurrentSurface::Suboptimal(surface_texture) => (surface_texture, true),
+            CurrentSurface::None => {
+                log::warn!("Could not obtain surface texture, skipping frame...");
+                return;
+            }
         };
 
-        let command_encoder = self
+        let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor {
+            label: Some("surface_view"),
+            format: Some(self.gpu.config.format),
+            dimension: Some(wgpu::TextureViewDimension::D2),
+            usage: Some(self.gpu.config.usage),
+            ..Default::default()
+        });
+
+        let mut command_encoder = self
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        let command_buffer = command_encoder.finish();
+        let render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
+            label: Some("render_pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: &surface_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.3,
+                        g: 0.5,
+                        b: 0.4,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
 
-        self.gpu.queue.submit(std::iter::once(command_buffer));
+        drop(render_pass);
+
+        self.gpu.queue.submit([command_encoder.finish()]);
         self.gpu.queue.present(surface_texture);
+
+        if surface_needs_configuration {
+            self.gpu.configure_surface();
+        }
     }
 
     pub fn resize_surface(&mut self, width: NonZeroU32, height: NonZeroU32) {
@@ -43,6 +81,12 @@ struct GpuContext {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
+}
+
+enum CurrentSurface {
+    Optimal(wgpu::SurfaceTexture),
+    Suboptimal(wgpu::SurfaceTexture),
+    None,
 }
 
 impl GpuContext {
@@ -114,24 +158,24 @@ impl GpuContext {
         self.configure_surface();
     }
 
-    fn get_surface_texture(&self) -> Option<wgpu::SurfaceTexture> {
+    fn acquire_surface(&self) -> CurrentSurface {
         match self.surface.get_current_texture() {
-            CurrentSurfaceTexture::Success(texture) => Some(texture),
+            CurrentSurfaceTexture::Success(texture) => CurrentSurface::Optimal(texture),
 
             CurrentSurfaceTexture::Suboptimal(texture) => {
                 log::warn!("Surface texture is suboptimal");
-                Some(texture)
+                CurrentSurface::Suboptimal(texture)
             }
 
             CurrentSurfaceTexture::Outdated => {
                 log::warn!("Surface texture is outdated");
                 self.configure_surface();
-                None
+                CurrentSurface::None
             }
 
             err => {
                 log::warn!("Surface texture error: {err:?}");
-                None
+                CurrentSurface::None
             }
         }
     }
