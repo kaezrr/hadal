@@ -1,6 +1,6 @@
 use crate::Result;
 use std::num::NonZeroU32;
-use wgpu::wgt::WgpuHasDisplayHandle;
+use wgpu::{CurrentSurfaceTexture, wgt::WgpuHasDisplayHandle};
 
 pub struct Engine {
     gpu: GpuContext,
@@ -14,6 +14,23 @@ impl Engine {
         Ok(Self {
             gpu: pollster::block_on(GpuContext::new(display, width, height))?,
         })
+    }
+
+    pub fn render_frame(&self) {
+        let Some(surface_texture) = self.gpu.get_surface_texture() else {
+            log::warn!("Could not obtain surface texture, skipping frame...");
+            return;
+        };
+
+        let command_encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+        let command_buffer = command_encoder.finish();
+
+        self.gpu.queue.submit(std::iter::once(command_buffer));
+        self.gpu.queue.present(surface_texture);
     }
 }
 
@@ -73,6 +90,8 @@ impl GpuContext {
             view_formats: vec![],
         };
 
+        surface.configure(&device, &config);
+
         Ok(Self {
             device,
             queue,
@@ -81,13 +100,35 @@ impl GpuContext {
         })
     }
 
-    fn configure(&self) {
+    fn configure_surface(&self) {
         self.surface.configure(&self.device, &self.config);
     }
 
-    fn configure_with_size(&mut self, width: NonZeroU32, height: NonZeroU32) {
+    fn configure_surface_with_size(&mut self, width: NonZeroU32, height: NonZeroU32) {
         self.config.width = width.get();
         self.config.height = height.get();
-        self.configure();
+        self.configure_surface();
+    }
+
+    fn get_surface_texture(&self) -> Option<wgpu::SurfaceTexture> {
+        match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Success(texture) => Some(texture),
+
+            CurrentSurfaceTexture::Suboptimal(texture) => {
+                log::warn!("Surface texture is suboptimal");
+                Some(texture)
+            }
+
+            CurrentSurfaceTexture::Outdated => {
+                log::warn!("Surface texture is outdated");
+                self.configure_surface();
+                None
+            }
+
+            err => {
+                log::warn!("Surface texture error: {err:?}");
+                None
+            }
+        }
     }
 }

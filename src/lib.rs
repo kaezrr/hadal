@@ -5,8 +5,9 @@ use std::{num::NonZeroU32, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::WindowEvent,
+    event::{KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -32,11 +33,11 @@ struct State {
 }
 
 #[derive(Default)]
-pub struct App {
+pub struct Application {
     state: Option<State>,
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler for Application {
     #[expect(
         clippy::expect_used,
         reason = "can't gracefully handle errors here, just crash"
@@ -67,15 +68,43 @@ impl ApplicationHandler for App {
         self.state = Some(State { window, engine });
     }
 
-    fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         let Some(ref state) = self.state else {
             log::warn!("window event before window initialized");
             return;
         };
 
         match event {
-            WindowEvent::RedrawRequested => state.window.request_redraw(),
+            WindowEvent::RedrawRequested => {
+                state.engine.render_frame();
+                state.window.request_redraw();
+            }
+
+            WindowEvent::KeyboardInput { event, .. } => {
+                if state.handle_keyboard_event(event) {
+                    event_loop.exit();
+                    log::info!("Exiting application... goodbye!");
+                }
+            }
+
             x => log::debug!("ignoring event: {x:?}"),
         }
+    }
+}
+
+impl State {
+    /// Handles keyboard input and returns whether application should quit
+    fn handle_keyboard_event(&self, event: winit::event::KeyEvent) -> bool {
+        let KeyEvent {
+            physical_key: PhysicalKey::Code(key),
+            state,
+            ..
+        } = event
+        else {
+            log::warn!("Ignoring unidentified key");
+            return false;
+        };
+
+        key == KeyCode::Escape && state.is_pressed()
     }
 }
