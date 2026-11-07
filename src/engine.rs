@@ -1,12 +1,52 @@
 use crate::Result;
 use std::num::NonZeroU32;
 use wgpu::{
-    CurrentSurfaceTexture, RenderPassColorAttachment, RenderPassDescriptor, TextureViewDescriptor,
+    CurrentSurfaceTexture, PipelineCompilationOptions, RenderPassColorAttachment,
+    RenderPassDescriptor, TextureViewDescriptor,
+    util::{BufferInitDescriptor, DeviceExt},
     wgt::WgpuHasDisplayHandle,
 };
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
+pub struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl Vertex {
+    const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+        array_stride: core::mem::size_of::<Self>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &wgpu::vertex_attr_array![
+            0 => Float32x3,
+            1 => Float32x3,
+        ],
+    };
+}
+
+const TRIANGLE: [Vertex; 3] = [
+    Vertex {
+        position: [-0.5, -0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, 0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
+
+const TRIANGLE_INDEX: [u16; 3] = [0, 1, 2];
+
 pub struct Engine {
     gpu: GpuContext,
+    triangle_render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
 }
 
 impl Engine {
@@ -14,19 +54,83 @@ impl Engine {
     where
         T: WgpuHasDisplayHandle + Into<wgpu::SurfaceTarget<'static>> + Clone,
     {
+        let gpu = pollster::block_on(GpuContext::new(display, width, height))?;
+
+        let triangle_pipeline_layout =
+            gpu.device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("triangle_pipeline_layout"),
+                    bind_group_layouts: &[],
+                    immediate_size: 0,
+                });
+
+        let vertex_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("vertex_buffer"),
+            contents: bytemuck::cast_slice(&TRIANGLE),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let index_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("index_buffer"),
+            contents: bytemuck::cast_slice(&TRIANGLE_INDEX),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
+        let shader_module = gpu
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("shader_module"),
+                source: wgpu::ShaderSource::Wgsl(
+                    include_str!("../res/target/triangle.wgsl").into(),
+                ),
+            });
+
+        let triangle_render_pipeline =
+            gpu.device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("triangle_render_pipeline"),
+                    layout: Some(&triangle_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader_module,
+                        entry_point: Some("vs_main"),
+                        compilation_options: PipelineCompilationOptions::default(),
+                        buffers: &[Some(Vertex::LAYOUT)],
+                    },
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleStrip,
+                        strip_index_format: Some(wgpu::IndexFormat::Uint16),
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        ..Default::default()
+                    },
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader_module,
+                        entry_point: Some("fs_main"),
+                        compilation_options: PipelineCompilationOptions::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: gpu.config.format,
+                            blend: Some(wgpu::BlendState::REPLACE),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    multiview_mask: None,
+                    cache: None,
+                });
+
         Ok(Self {
-            gpu: pollster::block_on(GpuContext::new(display, width, height))?,
+            gpu,
+            triangle_render_pipeline,
+            vertex_buffer,
+            index_buffer,
         })
     }
 
     pub fn render_frame(&self) {
-        let (surface_texture, surface_needs_configuration) = match self.gpu.acquire_surface() {
-            CurrentSurface::Optimal(surface_texture) => (surface_texture, false),
-            CurrentSurface::Suboptimal(surface_texture) => (surface_texture, true),
-            CurrentSurface::None => {
-                log::warn!("Could not obtain surface texture, skipping frame...");
-                return;
-            }
+        let Some((surface_texture, reconfig_surface)) = self.gpu.acquire_surface() else {
+            log::warn!("Could not obtain surface texture, skipping frame...");
+            return;
         };
 
         let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor {
@@ -42,7 +146,7 @@ impl Engine {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        let render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
+        let mut render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("render_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
                 view: &surface_view,
@@ -61,12 +165,19 @@ impl Engine {
             ..Default::default()
         });
 
+        render_pass.set_pipeline(&self.triangle_render_pipeline);
+
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+        render_pass.draw_indexed(0..3, 0, 0..1);
+
         drop(render_pass);
 
         self.gpu.queue.submit([command_encoder.finish()]);
         self.gpu.queue.present(surface_texture);
 
-        if surface_needs_configuration {
+        if reconfig_surface {
             self.gpu.configure_surface();
         }
     }
@@ -81,12 +192,6 @@ struct GpuContext {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
-}
-
-enum CurrentSurface {
-    Optimal(wgpu::SurfaceTexture),
-    Suboptimal(wgpu::SurfaceTexture),
-    None,
 }
 
 impl GpuContext {
@@ -158,24 +263,25 @@ impl GpuContext {
         self.configure_surface();
     }
 
-    fn acquire_surface(&self) -> CurrentSurface {
+    /// Returns the current surface texture and if it needs reconfiguration
+    fn acquire_surface(&self) -> Option<(wgpu::SurfaceTexture, bool)> {
         match self.surface.get_current_texture() {
-            CurrentSurfaceTexture::Success(texture) => CurrentSurface::Optimal(texture),
+            CurrentSurfaceTexture::Success(texture) => Some((texture, false)),
 
             CurrentSurfaceTexture::Suboptimal(texture) => {
                 log::warn!("Surface texture is suboptimal");
-                CurrentSurface::Suboptimal(texture)
+                Some((texture, true))
             }
 
             CurrentSurfaceTexture::Outdated => {
                 log::warn!("Surface texture is outdated");
                 self.configure_surface();
-                CurrentSurface::None
+                None
             }
 
             err => {
                 log::warn!("Surface texture error: {err:?}");
-                CurrentSurface::None
+                None
             }
         }
     }

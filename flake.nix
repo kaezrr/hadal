@@ -21,8 +21,11 @@
           rustfmt
           clippy
 
-          # Tools
+          # Shader Tools
           shader-slang
+          clang-tools
+
+          # Vulkan
           vulkan-tools
         ];
 
