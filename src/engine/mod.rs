@@ -1,20 +1,22 @@
+mod gpu;
+
 use crate::Result;
 use std::num::NonZeroU32;
 use wgpu::{
-    CurrentSurfaceTexture, PipelineCompilationOptions, RenderPassColorAttachment,
-    RenderPassDescriptor, TextureViewDescriptor,
+    PipelineCompilationOptions, RenderPassColorAttachment, RenderPassDescriptor,
+    TextureViewDescriptor,
     util::{BufferInitDescriptor, DeviceExt},
     wgt::WgpuHasDisplayHandle,
 };
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
-pub struct Vertex {
+pub struct GpuVertex {
     position: [f32; 3],
     color: [f32; 3],
 }
 
-impl Vertex {
+impl GpuVertex {
     const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: core::mem::size_of::<Self>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
@@ -25,16 +27,16 @@ impl Vertex {
     };
 }
 
-const TRIANGLE: [Vertex; 3] = [
-    Vertex {
+const TRIANGLE: [GpuVertex; 3] = [
+    GpuVertex {
         position: [-0.5, -0.5, 0.0],
         color: [1.0, 0.0, 0.0],
     },
-    Vertex {
+    GpuVertex {
         position: [0.5, -0.5, 0.0],
         color: [0.0, 1.0, 0.0],
     },
-    Vertex {
+    GpuVertex {
         position: [0.0, 0.5, 0.0],
         color: [0.0, 0.0, 1.0],
     },
@@ -43,7 +45,7 @@ const TRIANGLE: [Vertex; 3] = [
 const TRIANGLE_INDEX: [u16; 3] = [0, 1, 2];
 
 pub struct Engine {
-    gpu: GpuContext,
+    gpu: gpu::GpuContext,
     triangle_render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
@@ -54,7 +56,7 @@ impl Engine {
     where
         T: WgpuHasDisplayHandle + Into<wgpu::SurfaceTarget<'static>> + Clone,
     {
-        let gpu = pollster::block_on(GpuContext::new(display, width, height))?;
+        let gpu = pollster::block_on(gpu::GpuContext::new(display, width, height))?;
 
         let triangle_pipeline_layout =
             gpu.device
@@ -81,7 +83,7 @@ impl Engine {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shader_module"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../res/target/triangle.wgsl").into(),
+                    include_str!("../../res/target/triangle.wgsl").into(),
                 ),
             });
 
@@ -94,7 +96,7 @@ impl Engine {
                         module: &shader_module,
                         entry_point: Some("vs_main"),
                         compilation_options: PipelineCompilationOptions::default(),
-                        buffers: &[Some(Vertex::LAYOUT)],
+                        buffers: &[Some(GpuVertex::LAYOUT)],
                     },
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -184,105 +186,5 @@ impl Engine {
 
     pub fn resize_surface(&mut self, width: NonZeroU32, height: NonZeroU32) {
         self.gpu.configure_surface_with_size(width, height);
-    }
-}
-
-struct GpuContext {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface: wgpu::Surface<'static>,
-    config: wgpu::SurfaceConfiguration,
-}
-
-impl GpuContext {
-    async fn new<T>(display: T, width: NonZeroU32, height: NonZeroU32) -> Result<Self>
-    where
-        T: WgpuHasDisplayHandle + Into<wgpu::SurfaceTarget<'static>> + Clone,
-    {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
-            Box::new(display.clone()),
-        ));
-
-        let surface = instance.create_surface(display)?;
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                ..Default::default()
-            })
-            .await?;
-
-        log::info!("Using GPU device: {}", adapter.get_info().name);
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("device_queue_request"),
-                ..Default::default()
-            })
-            .await?;
-
-        let capabilities = surface.get_capabilities(&adapter);
-
-        let format = capabilities
-            .formats
-            .iter()
-            .copied()
-            .find(wgpu::TextureFormat::is_srgb)
-            .unwrap_or(capabilities.formats[0]);
-
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            color_space: wgpu::SurfaceColorSpace::Auto,
-            width: width.get(),
-            height: height.get(),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            desired_maximum_frame_latency: 2,
-            alpha_mode: capabilities.alpha_modes[0],
-            view_formats: vec![],
-        };
-
-        surface.configure(&device, &config);
-
-        Ok(Self {
-            device,
-            queue,
-            surface,
-            config,
-        })
-    }
-
-    fn configure_surface(&self) {
-        self.surface.configure(&self.device, &self.config);
-    }
-
-    fn configure_surface_with_size(&mut self, width: NonZeroU32, height: NonZeroU32) {
-        self.config.width = width.get();
-        self.config.height = height.get();
-        self.configure_surface();
-    }
-
-    /// Returns the current surface texture and if it needs reconfiguration
-    fn acquire_surface(&self) -> Option<(wgpu::SurfaceTexture, bool)> {
-        match self.surface.get_current_texture() {
-            CurrentSurfaceTexture::Success(texture) => Some((texture, false)),
-
-            CurrentSurfaceTexture::Suboptimal(texture) => {
-                log::warn!("Surface texture is suboptimal");
-                Some((texture, true))
-            }
-
-            CurrentSurfaceTexture::Outdated => {
-                log::warn!("Surface texture is outdated");
-                self.configure_surface();
-                None
-            }
-
-            err => {
-                log::warn!("Surface texture error: {err:?}");
-                None
-            }
-        }
     }
 }
