@@ -83,7 +83,7 @@ impl Engine {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shader_module"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../res/target/triangle.wgsl").into(),
+                    include_str!("../../res/shaders/triangle.slang.wgsl").into(),
                 ),
             });
 

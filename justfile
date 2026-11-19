@@ -1,6 +1,15 @@
-run:
-    RUST_LOG=info cargo run
+export RUST_LOG := "info"
 
-build:
-    RUST_LOG=info cargo build
+run: shaderc
+    cargo run
 
+run-release: shaderc
+    cargo run --release
+
+shaderc:
+    #!/bin/sh
+    for shader in ./res/shaders/*.slang; do
+        printf "compiling %s... " $shader
+        slangc $shader -target wgsl -o $shader.wgsl
+        printf "done\n"
+    done
