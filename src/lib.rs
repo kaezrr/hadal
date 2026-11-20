@@ -52,8 +52,8 @@ impl ApplicationHandler for Application {
         reason = "can't gracefully handle errors here, just crash"
     )]
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let width = unsafe { NonZeroU32::new_unchecked(960) };
-        let height = unsafe { NonZeroU32::new_unchecked(640) };
+        let width = unsafe { NonZeroU32::new_unchecked(800) };
+        let height = unsafe { NonZeroU32::new_unchecked(800) };
 
         let window = {
             let window_attr = Window::default_attributes()

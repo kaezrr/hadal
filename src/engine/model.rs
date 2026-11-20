@@ -1,7 +1,7 @@
 use glam::Mat4;
 use wgpu::util::DeviceExt;
 
-use crate::model::{Mesh, Model, Scene};
+use crate::model::{Mesh, Model, Scene, Transform};
 
 #[derive(Debug)]
 pub struct GpuScene {
@@ -23,7 +23,7 @@ impl GpuScene {
 #[derive(Debug)]
 pub struct GpuModel {
     pub meshes: Vec<GpuMesh>,
-    pub transform: wgpu::Buffer,
+    pub transform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -37,7 +37,7 @@ impl GpuModel {
             .map(|mesh| GpuMesh::new(mesh, device))
             .collect();
 
-        let transform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let transform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: model.label.as_deref(),
             contents: bytemuck::bytes_of(&model.transform.matrix()),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -48,13 +48,13 @@ impl GpuModel {
             layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: Self::TRANSFORM_BINDING,
-                resource: transform.as_entire_binding(),
+                resource: transform_buffer.as_entire_binding(),
             }],
         });
 
         Self {
             meshes,
-            transform,
+            transform_buffer,
             bind_group,
         }
     }
@@ -73,6 +73,14 @@ impl GpuModel {
                 count: None,
             }],
         })
+    }
+
+    pub fn update_transform(&self, queue: &wgpu::Queue, transform: &Transform) {
+        queue.write_buffer(
+            &self.transform_buffer,
+            0,
+            bytemuck::bytes_of(&transform.matrix()),
+        );
     }
 }
 

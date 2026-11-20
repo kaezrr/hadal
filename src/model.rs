@@ -18,27 +18,27 @@ impl Vertex {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Scene {
     pub label: Option<String>,
     pub models: Vec<Model>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Model {
     pub label: Option<String>,
     pub meshes: Vec<Mesh>,
     pub transform: Transform,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mesh {
     pub label: Option<String>,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,

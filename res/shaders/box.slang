@@ -13,7 +13,7 @@ struct FragmentOutput {
 }
 
 struct ModelData {
-    float4x4 transform;
+    column_major float4x4 transform;
 }
 
 [vk::binding(0, 0)]
@@ -24,7 +24,7 @@ VertexOutput vs_main(VertexInput vin) {
     VertexOutput vout;
     float4 position = float4(vin.position, 1.0);
 
-    vout.position = mul(position, model_data.transform);
+    vout.position = mul(model_data.transform, position);
     vout.color = vin.color;
 
     return vout;

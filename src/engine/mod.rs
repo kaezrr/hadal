@@ -5,8 +5,9 @@ use crate::{
     Result,
     engine::model::{GpuModel, GpuScene},
     load_gltf,
-    model::Vertex,
+    model::{Scene, Vertex},
 };
+use glam::Vec3;
 use std::num::NonZeroU32;
 use wgpu::{
     IndexFormat, PipelineCompilationOptions, RenderPassColorAttachment, RenderPassDescriptor,
@@ -19,6 +20,7 @@ pub struct Engine {
 
     model_bindgroup_layout: wgpu::BindGroupLayout,
     render_scene: GpuScene,
+    scene: Scene,
 }
 
 impl Engine {
@@ -30,10 +32,8 @@ impl Engine {
 
         let model_bindgroup_layout = GpuModel::create_bind_group_layout(&gpu.device);
 
-        let render_scene = {
-            let scenes = load_gltf("./res/models/Box.glb").expect("load glb");
-            GpuScene::new(&scenes[0], &gpu.device, &model_bindgroup_layout)
-        };
+        let scenes = load_gltf("./res/models/Box.glb").expect("load glb");
+        let render_scene = GpuScene::new(&scenes[0], &gpu.device, &model_bindgroup_layout);
 
         let render_pipeline_layout =
             gpu.device
@@ -91,10 +91,11 @@ impl Engine {
             render_pipeline,
             model_bindgroup_layout,
             render_scene,
+            scene: scenes[0].clone(),
         })
     }
 
-    pub fn render_frame(&self) {
+    pub fn render_frame(&mut self) {
         let Some((surface_texture, reconfig_surface)) = self.gpu.acquire_surface() else {
             log::warn!("Could not obtain surface texture, skipping frame...");
             return;
@@ -120,12 +121,7 @@ impl Engine {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.3,
-                        g: 0.5,
-                        b: 0.4,
-                        a: 1.0,
-                    }),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -145,6 +141,13 @@ impl Engine {
         }
 
         drop(render_pass);
+
+        let transform = &mut self.scene.models[0].transform;
+
+        transform.rotation *=
+            glam::Quat::from_axis_angle(Vec3::new(1.0, 1.0, 0.0), 0.1f32.to_radians()).normalize();
+
+        self.render_scene.models[0].update_transform(&self.gpu.queue, transform);
 
         self.gpu.queue.submit([command_encoder.finish()]);
         self.gpu.queue.present(surface_texture);
