@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 use gltf::{Primitive, mesh::util::ReadColors};
 
 use crate::model::{Mesh, Model, Scene, Transform, Vertex};
@@ -92,11 +92,19 @@ fn read_primitive(
         |x| x.into_u32().collect(),
     );
 
+    let color = Vec4::from_array(
+        primitive
+            .material()
+            .pbr_metallic_roughness()
+            .base_color_factor(),
+    )
+    .truncate();
+
     let colors = reader
         .read_colors(0)
         .map(ReadColors::into_rgb_f32)
         .map_or_else(
-            || vec![Vec3::ONE; positions.len()],
+            || vec![color; positions.len()],
             |x| x.map(Vec3::from_array).collect(),
         );
 
