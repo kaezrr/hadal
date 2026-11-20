@@ -1,18 +1,24 @@
 mod gpu;
 mod model;
 
-use crate::{Result, model::Vertex};
+use crate::{
+    Result,
+    engine::model::{GpuModel, GpuScene},
+    load_gltf,
+    model::Vertex,
+};
 use std::num::NonZeroU32;
 use wgpu::{
-    PipelineCompilationOptions, RenderPassColorAttachment, RenderPassDescriptor,
+    IndexFormat, PipelineCompilationOptions, RenderPassColorAttachment, RenderPassDescriptor,
     TextureViewDescriptor, wgt::WgpuHasDisplayHandle,
 };
 
 pub struct Engine {
     gpu: gpu::GpuContext,
-    triangle_render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
+    render_pipeline: wgpu::RenderPipeline,
+
+    model_bindgroup_layout: wgpu::BindGroupLayout,
+    render_scene: GpuScene,
 }
 
 impl Engine {
@@ -22,11 +28,18 @@ impl Engine {
     {
         let gpu = pollster::block_on(gpu::GpuContext::new(display, width, height))?;
 
-        let triangle_pipeline_layout =
+        let model_bindgroup_layout = GpuModel::create_bind_group_layout(&gpu.device);
+
+        let render_scene = {
+            let scenes = load_gltf("./res/models/Box.glb").expect("load glb");
+            GpuScene::new(&scenes[0], &gpu.device, &model_bindgroup_layout)
+        };
+
+        let render_pipeline_layout =
             gpu.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("triangle_pipeline_layout"),
-                    bind_group_layouts: &[],
+                    label: Some("render_pipeline_layout"),
+                    bind_group_layouts: &[Some(&model_bindgroup_layout)],
                     immediate_size: 0,
                 });
 
@@ -35,49 +48,49 @@ impl Engine {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shader_module"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../res/shaders/triangle.slang.wgsl").into(),
+                    include_str!("../../res/shaders/box.slang.wgsl").into(),
                 ),
             });
 
-        let triangle_render_pipeline =
-            gpu.device
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("triangle_render_pipeline"),
-                    layout: Some(&triangle_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &shader_module,
-                        entry_point: Some("vs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        buffers: &[Some(Vertex::LAYOUT)],
-                    },
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleStrip,
-                        strip_index_format: Some(wgpu::IndexFormat::Uint16),
-                        front_face: wgpu::FrontFace::Ccw,
-                        cull_mode: Some(wgpu::Face::Back),
-                        ..Default::default()
-                    },
-                    depth_stencil: None,
-                    multisample: wgpu::MultisampleState::default(),
-                    fragment: Some(wgpu::FragmentState {
-                        module: &shader_module,
-                        entry_point: Some("fs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: gpu.config.format,
-                            blend: Some(wgpu::BlendState::REPLACE),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                    }),
-                    multiview_mask: None,
-                    cache: None,
-                });
+        let render_pipeline = gpu
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("render_pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader_module,
+                    entry_point: Some("vs_main"),
+                    compilation_options: PipelineCompilationOptions::default(),
+                    buffers: &[Some(Vertex::LAYOUT)],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader_module,
+                    entry_point: Some("fs_main"),
+                    compilation_options: PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: gpu.config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            });
 
         Ok(Self {
             gpu,
-            triangle_render_pipeline,
-            vertex_buffer: todo!(),
-            index_buffer: todo!(),
+            render_pipeline,
+            model_bindgroup_layout,
+            render_scene,
         })
     }
 
@@ -119,12 +132,17 @@ impl Engine {
             ..Default::default()
         });
 
-        render_pass.set_pipeline(&self.triangle_render_pipeline);
+        render_pass.set_pipeline(&self.render_pipeline);
 
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        for model in &self.render_scene.models {
+            render_pass.set_bind_group(0, &model.bind_group, &[]);
 
-        render_pass.draw_indexed(0..3, 0, 0..1);
+            for mesh in &model.meshes {
+                render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                render_pass.set_index_buffer(mesh.index_buffer.slice(..), IndexFormat::Uint32);
+                render_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+            }
+        }
 
         drop(render_pass);
 

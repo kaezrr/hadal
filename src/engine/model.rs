@@ -1,6 +1,24 @@
+use glam::Mat4;
 use wgpu::util::DeviceExt;
 
-use crate::model::{Mesh, Model};
+use crate::model::{Mesh, Model, Scene};
+
+#[derive(Debug)]
+pub struct GpuScene {
+    pub models: Vec<GpuModel>,
+}
+
+impl GpuScene {
+    pub fn new(scene: &Scene, device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> Self {
+        let models = scene
+            .models
+            .iter()
+            .map(|model| GpuModel::new(model, device, layout))
+            .collect();
+
+        Self { models }
+    }
+}
 
 #[derive(Debug)]
 pub struct GpuModel {
@@ -10,6 +28,8 @@ pub struct GpuModel {
 }
 
 impl GpuModel {
+    const TRANSFORM_BINDING: u32 = 0;
+
     pub fn new(model: &Model, device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> Self {
         let meshes = model
             .meshes
@@ -27,7 +47,7 @@ impl GpuModel {
             label: model.label.as_deref(),
             layout,
             entries: &[wgpu::BindGroupEntry {
-                binding: 0,
+                binding: Self::TRANSFORM_BINDING,
                 resource: transform.as_entire_binding(),
             }],
         });
@@ -39,19 +59,16 @@ impl GpuModel {
         }
     }
 
-    pub fn create_bind_group_layout(
-        device: &wgpu::Device,
-        label: Option<&str>,
-    ) -> wgpu::BindGroupLayout {
+    pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label,
+            label: Some("GpuModel::bind_group_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
+                binding: Self::TRANSFORM_BINDING,
                 visibility: wgpu::ShaderStages::VERTEX,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: None,
+                    min_binding_size: wgpu::BufferSize::new(core::mem::size_of::<Mat4>() as u64),
                 },
                 count: None,
             }],
