@@ -1,10 +1,10 @@
 export RUST_LOG := "info"
 
-run: shaderc
+run:
     cargo run
 
-run-release: shaderc
-    cargo run --release
+build: shaderc
+    cargo build
 
 shaderc:
     #!/bin/sh

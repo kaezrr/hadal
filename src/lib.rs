@@ -1,7 +1,8 @@
 mod engine;
+mod loader;
 
+use glam::{Mat4, Quat, Vec3};
 use std::{num::NonZeroU32, sync::Arc};
-
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -11,10 +12,11 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::engine::Engine;
+use crate::engine::{Engine, Vertex};
+pub use loader::load_gltf;
 
 #[derive(Debug, thiserror::Error)]
-enum Error {
+pub enum Error {
     #[error("Failed to create surface: {0}")]
     CreateSurface(#[from] wgpu::CreateSurfaceError),
 
@@ -23,6 +25,12 @@ enum Error {
 
     #[error("Failed to request device: {0}")]
     RequestDevice(#[from] wgpu::RequestDeviceError),
+
+    #[error("Error loading GLTF file {0}")]
+    GltfLoader(#[from] gltf::Error),
+
+    #[error("IO Error {0}")]
+    FileIo(#[from] std::io::Error),
 }
 
 type Result<T> = core::result::Result<T, Error>;
@@ -81,7 +89,7 @@ impl ApplicationHandler for Application {
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
-                if state.handle_keyboard_event(event) {
+                if state.handle_key_should_quit(&event) {
                     event_loop.exit();
                     log::info!("Exiting application... goodbye!");
                 }
@@ -108,7 +116,11 @@ impl ApplicationHandler for Application {
 
 impl State {
     /// Handles keyboard input and returns whether application should quit
-    fn handle_keyboard_event(&self, event: winit::event::KeyEvent) -> bool {
+    #[expect(
+        clippy::unused_self,
+        reason = "engine key events are not yet implemented"
+    )]
+    fn handle_key_should_quit(&self, event: &winit::event::KeyEvent) -> bool {
         let KeyEvent {
             physical_key: PhysicalKey::Code(key),
             state,
@@ -119,6 +131,52 @@ impl State {
             return false;
         };
 
-        key == KeyCode::Escape && state.is_pressed()
+        *key == KeyCode::Escape && state.is_pressed()
+    }
+}
+
+#[derive(Debug)]
+pub struct Scene {
+    pub models: Vec<Model>,
+}
+
+#[derive(Debug)]
+pub struct Model {
+    pub meshes: Vec<Mesh>,
+    pub transform: Transform,
+}
+
+#[derive(Debug)]
+pub struct Mesh {
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
+}
+
+#[derive(Debug)]
+pub struct Transform {
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
+}
+
+impl Transform {
+    const IDENTITY: Self = Transform {
+        position: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+        scale: Vec3::ONE,
+    };
+
+    fn matrix(&self) -> Mat4 {
+        glam::Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.position)
+    }
+
+    fn from_matrix(mat: Mat4) -> Self {
+        let (scale, rotation, position) = mat.to_scale_rotation_translation();
+
+        Self {
+            position,
+            rotation,
+            scale,
+        }
     }
 }

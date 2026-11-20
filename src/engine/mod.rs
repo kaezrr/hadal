@@ -1,22 +1,21 @@
 mod gpu;
 
 use crate::Result;
+use glam::Vec3;
 use std::num::NonZeroU32;
 use wgpu::{
     PipelineCompilationOptions, RenderPassColorAttachment, RenderPassDescriptor,
-    TextureViewDescriptor,
-    util::{BufferInitDescriptor, DeviceExt},
-    wgt::WgpuHasDisplayHandle,
+    TextureViewDescriptor, wgt::WgpuHasDisplayHandle,
 };
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
-pub struct GpuVertex {
-    position: [f32; 3],
-    color: [f32; 3],
+pub struct Vertex {
+    pub position: Vec3,
+    pub color: Vec3,
 }
 
-impl GpuVertex {
+impl Vertex {
     const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: core::mem::size_of::<Self>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
@@ -26,23 +25,6 @@ impl GpuVertex {
         ],
     };
 }
-
-const TRIANGLE: [GpuVertex; 3] = [
-    GpuVertex {
-        position: [-0.5, -0.5, 0.0],
-        color: [1.0, 0.0, 0.0],
-    },
-    GpuVertex {
-        position: [0.5, -0.5, 0.0],
-        color: [0.0, 1.0, 0.0],
-    },
-    GpuVertex {
-        position: [0.0, 0.5, 0.0],
-        color: [0.0, 0.0, 1.0],
-    },
-];
-
-const TRIANGLE_INDEX: [u16; 3] = [0, 1, 2];
 
 pub struct Engine {
     gpu: gpu::GpuContext,
@@ -66,17 +48,17 @@ impl Engine {
                     immediate_size: 0,
                 });
 
-        let vertex_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("vertex_buffer"),
-            contents: bytemuck::cast_slice(&TRIANGLE),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("index_buffer"),
-            contents: bytemuck::cast_slice(&TRIANGLE_INDEX),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        // let vertex_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+        //     label: Some("vertex_buffer"),
+        //     contents: bytemuck::cast_slice(&TRIANGLE),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
+        //
+        // let index_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+        //     label: Some("index_buffer"),
+        //     contents: bytemuck::cast_slice(&TRIANGLE_INDEX),
+        //     usage: wgpu::BufferUsages::INDEX,
+        // });
 
         let shader_module = gpu
             .device
@@ -96,7 +78,7 @@ impl Engine {
                         module: &shader_module,
                         entry_point: Some("vs_main"),
                         compilation_options: PipelineCompilationOptions::default(),
-                        buffers: &[Some(GpuVertex::LAYOUT)],
+                        buffers: &[Some(Vertex::LAYOUT)],
                     },
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -124,8 +106,8 @@ impl Engine {
         Ok(Self {
             gpu,
             triangle_render_pipeline,
-            vertex_buffer,
-            index_buffer,
+            vertex_buffer: todo!(),
+            index_buffer: todo!(),
         })
     }
 
