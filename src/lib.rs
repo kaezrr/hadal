@@ -1,7 +1,7 @@
 mod engine;
 mod loader;
+mod model;
 
-use glam::{Mat4, Quat, Vec3};
 use std::{num::NonZeroU32, sync::Arc};
 use winit::{
     application::ApplicationHandler,
@@ -12,7 +12,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::engine::{Engine, Vertex};
+use crate::engine::Engine;
+
 pub use loader::load_gltf;
 
 #[derive(Debug, thiserror::Error)]
@@ -132,51 +133,5 @@ impl State {
         };
 
         *key == KeyCode::Escape && state.is_pressed()
-    }
-}
-
-#[derive(Debug)]
-pub struct Scene {
-    pub models: Vec<Model>,
-}
-
-#[derive(Debug)]
-pub struct Model {
-    pub meshes: Vec<Mesh>,
-    pub transform: Transform,
-}
-
-#[derive(Debug)]
-pub struct Mesh {
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u32>,
-}
-
-#[derive(Debug)]
-pub struct Transform {
-    pub position: Vec3,
-    pub rotation: Quat,
-    pub scale: Vec3,
-}
-
-impl Transform {
-    const IDENTITY: Self = Transform {
-        position: Vec3::ZERO,
-        rotation: Quat::IDENTITY,
-        scale: Vec3::ONE,
-    };
-
-    fn matrix(&self) -> Mat4 {
-        glam::Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.position)
-    }
-
-    fn from_matrix(mat: Mat4) -> Self {
-        let (scale, rotation, position) = mat.to_scale_rotation_translation();
-
-        Self {
-            position,
-            rotation,
-            scale,
-        }
     }
 }

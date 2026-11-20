@@ -1,30 +1,12 @@
 mod gpu;
+mod model;
 
-use crate::Result;
-use glam::Vec3;
+use crate::{Result, model::Vertex};
 use std::num::NonZeroU32;
 use wgpu::{
     PipelineCompilationOptions, RenderPassColorAttachment, RenderPassDescriptor,
     TextureViewDescriptor, wgt::WgpuHasDisplayHandle,
 };
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
-pub struct Vertex {
-    pub position: Vec3,
-    pub color: Vec3,
-}
-
-impl Vertex {
-    const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
-        array_stride: core::mem::size_of::<Self>() as wgpu::BufferAddress,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &wgpu::vertex_attr_array![
-            0 => Float32x3,
-            1 => Float32x3,
-        ],
-    };
-}
 
 pub struct Engine {
     gpu: gpu::GpuContext,
@@ -47,18 +29,6 @@ impl Engine {
                     bind_group_layouts: &[],
                     immediate_size: 0,
                 });
-
-        // let vertex_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: Some("vertex_buffer"),
-        //     contents: bytemuck::cast_slice(&TRIANGLE),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-        //
-        // let index_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: Some("index_buffer"),
-        //     contents: bytemuck::cast_slice(&TRIANGLE_INDEX),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
 
         let shader_module = gpu
             .device

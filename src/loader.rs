@@ -3,7 +3,7 @@ use std::path::Path;
 use glam::{Mat4, Vec3};
 use gltf::{Primitive, mesh::util::ReadColors};
 
-use crate::{Mesh, Model, Scene, Transform, engine::Vertex};
+use crate::model::{Mesh, Model, Scene, Transform, Vertex};
 
 pub fn load_gltf(path: impl AsRef<Path>) -> crate::Result<Vec<Scene>> {
     let (document, buffers, _images) = gltf::import(path)?;
@@ -17,7 +17,10 @@ pub fn load_gltf(path: impl AsRef<Path>) -> crate::Result<Vec<Scene>> {
                 visit_node(&root_node, &mut models, &Mat4::IDENTITY, &buffers);
             });
 
-            Scene { models }
+            Scene {
+                label: scene.name().map(String::from),
+                models,
+            }
         })
         .collect())
 }
@@ -33,6 +36,7 @@ fn visit_node(
     if let Some(mesh) = node.mesh() {
         let meshes = visit_mesh(&mesh, buffers);
         models.push(Model {
+            label: mesh.name().map(String::from),
             meshes,
             transform: Transform::from_matrix(matrix),
         });
@@ -60,6 +64,9 @@ fn visit_mesh(mesh: &gltf::Mesh, buffers: &[gltf::buffer::Data]) -> Vec<Mesh> {
                 .collect();
 
             Mesh {
+                label: mesh
+                    .name()
+                    .map(|x| format!("{x}-primitive-{}", primitive.index())),
                 vertices,
                 indices: props.indices,
             }
